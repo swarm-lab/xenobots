@@ -89,4 +89,4 @@ tracks <- track_df(full_dat$x, full_dat$y, t = full_dat$frame,
                    condition = full_dat$condition, age = full_dat$age,
                    arena_dist = full_dat$arena_dist)
 
-saveRDS(tracks, "data.rds")
+saveRDS(tracks, "data_WT.rds")
