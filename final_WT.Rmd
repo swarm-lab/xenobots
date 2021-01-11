@@ -1,0 +1,648 @@
+---
+title: "R Notebook"
+output:
+  html_document:
+    toc: yes
+    df_print: paged
+    theme: flatly
+    fig_caption: yes
+    number_sections: yes
+    code_folding: hide
+bibliography: bib.bib
+csl: plos.csl
+---
+
+---
+
+# . Video tracking
+
+The bots trajectory were extracted from the experimental videos using the
+`trackR` function in the `trackR` package (version 0.3.2) @trackr2020 for R. The
+parameters of the video-tracking were set individually for each video so as to
+maximize the automated tracking accuracy of each experiments. The resulting
+trajectories were then manually inspected and corrected for defects (e.g.,
+swapped IDs, spurious trajectories, disconnected trajectories, etc) using the
+`trackFixer` function of the `trackR` package.
+
+```{r message=FALSE}
+library(readr)
+if (!require(trackdf, quietly = TRUE)) {
+  remotes::install_github("swarm-lab/trackdf")
+} else if (packageVersion("trackdf") < "0.2.2") {
+  remotes::install_github("swarm-lab/trackdf")
+}
+library(trackdf)
+library(dplyr)
+
+tracks <- read_rds("data_WT.rds") %>%
+  filter(., ignore == FALSE) 
+```
+
+This resulted in a total of `r format(nrow(tracks), big.mark = ",")` unique
+positions grouped into `r format(length(unique(tracks$id)), big.mark = ",")`
+unique trajectories.
+
+---
+
+# . Basic movement metrics
+
+For each position of each trajectory, we calculated the following metrics:
+
+```{r}
+tracks <- tracks %>%
+  group_by(., id) %>%
+  arrange(., t, .by_group = TRUE)
+```
+
+- The linear distance between the current position and the immediately preceding 
+one. By convention, the linear distance is set to 0 for the first position.
+
+```{r message=FALSE}
+if (!require(swaRm, quietly = TRUE)) {
+  remotes::install_github("swarm-lab/swaRm")
+}
+library(swaRm)
+
+tracks <- tracks %>%
+  mutate(., lin_dist = linDist(x, y))
+```
+
+- The linear speed at each position, approximated as the distance moved between 
+the current position and the immediately preceding one during the time interval 
+between these 2 positions. Note that a linear speed can, therefore, not be 
+calculated for the first position.
+
+```{r}
+tracks <- tracks %>%
+  mutate(., lin_speed = linSpeed(x, y, t))
+```
+
+- The heading of the bot at each position, approximated as the angle between the 
+vector formed by the current position and the immediately preceding one and that 
+formed by the current position and the immediately following one. Note that a 
+heading can, therefore, not be calculated for the first position.
+
+```{r}
+tracks <- tracks %>%
+  mutate(., heading = heading(x, y))
+```
+
+- The angular speed of the bot at each position, approximated as the difference 
+between the heading at the immediately preceding position and that at the current 
+one during the time interval between the corresponding 3 positions required to 
+calcutate these 2 headings (see previous point). Note that an angular speed can, 
+therefore, not be calculated for the first two positions.
+
+```{r}
+tracks <- tracks %>%
+  mutate(., ang_speed = angSpeed(x, y, t))
+```
+
+- The time difference between each position.
+
+```{r}
+tracks <- tracks %>%
+  mutate(., dt = as.numeric(diff(c(t, NA)), units = "secs")) %>%
+  ungroup(.)
+```
+
+---
+
+# . Behavioral classification
+
+Behavioral classification was performed on non-overlapping 30-second chunks of
+trajectory.
+
+## . Active vs inactive
+
+Visual inspection of the experimental videos suggested that bots spent a
+significant amount of time motionless. Therefore, we started our analysis by
+classifying the 30-second chunks of trajectory into active and inactive chunks.
+
+Because of various sources of uncertainties in our observation and tracking
+protocol, it is not reliable to only use instantaneous speed as a metric to
+separate active from inactive chunks of trajectory. For instance, slow directed
+movement may not always be distinguishable from random position shifts due to
+tracking uncertainty using speed as the only differentiating metric.
+
+In order to circumvent this issue, we defined activity as predictable movement,
+that is a sequence of successive position changes that are not fully independent
+from each other.
+
+To determine how predictable a position change was, we used the linear speed,
+heading, and angular speed estimated at each position to predict the coordinates
+of the following position. We then computed the error (Euclidean distance)
+between the predicted coordinates and the actual coordinates.
+
+```{r}
+tracks <- tracks %>%
+  group_by(., id) %>%
+  arrange(., t, .by_group = TRUE) %>%
+  mutate(., pred_x = x + (lin_speed * dt * cos(heading + ang_speed)),
+         pred_y = y + (lin_speed * dt * sin(heading + ang_speed)),
+         error = c(NA, sqrt((x[2:n()] - pred_x[1:(n() - 1)]) ^ 2 + 
+                              (y[2:n()] - pred_y[1:(n() - 1)]) ^ 2))) %>%
+  ungroup(.) 
+```
+
+For each complete 30-second chunk of trajectory (i.e. chunks with no missing
+time stamp), we then calculated the total error over the entire chunk and
+normalized it by the total distance traveled during that chunk in order to
+account for the artificial error amplification caused by predicting over longer
+distances. We also discarded all chunks that have at least one point within 0.5
+mm of the arena wall in order to eliminate edge effects on the bots' behaviors.
+
+```{r fig.width=6, fig.height=6, out.width='50%'}
+library(ggplot2)
+
+chunk_size <- 30 
+
+tracks <- tracks %>%
+  group_by(., id) %>%
+  mutate(., group = (as.numeric(t - min(t), units = "secs") - 
+                       (as.numeric(t - min(t), units = "secs") %% 
+                          chunk_size)) / chunk_size) %>%
+  ungroup(.)
+
+activity_summ <- tracks %>%
+  group_by(., id, group) %>%
+  summarize(., norm_error = sum(error, na.rm = TRUE) / sum(lin_dist, na.rm = TRUE),
+            n = n(), 
+            discard = any(arena_dist < 0.05),
+            .groups = "drop") %>%
+  ungroup(.) %>%
+  filter(., n == chunk_size) 
+
+ggplot(filter(activity_summ, discard == FALSE), aes(norm_error)) +
+  geom_histogram(aes(y = ..density..), bins = 100, alpha = 0.5) +
+  labs(x = "Total normalized error", y = "Density") +
+  theme_light(base_size = 16, base_family = "Raleway")
+```
+
+In order to separate active from inactive chunks, we applied an automated
+classification method on the distribution of total normalized errors. We fit a
+Gamma mixture model with 2 components to the data using the expectation
+maximization algorithm in the `REBMIX` function from the `rebmix` package
+(version 2.12.0) @rebmix2020 for R.
+
+```{r fig.height=6, fig.width=6, out.width='50%', message=FALSE, cache=TRUE}
+library(rebmix)
+
+gmix <- activity_summ %>%
+  filter(., discard == FALSE) %>%
+  dplyr::select(., norm_error) %>%
+  list(df = .) %>%
+  REBMIX(Dataset = ., pdf = "gamma", Preprocessing = "histogram",
+         cmin = 2, cmax = 2, Criterion = "BIC")
+
+ggplot(filter(activity_summ, discard == FALSE), aes(norm_error)) +
+  geom_histogram(aes(y = ..density..), bins = 100, alpha = 0.5) +
+  stat_function(fun = function(x, shape, scale, lambda) dgamma(x, shape = shape, scale = scale) * lambda,
+                args = list(shape = gmix@Theta[[1]]$theta2.1, 
+                            scale = gmix@Theta[[1]]$theta1.1, 
+                            lambda = gmix@w[[1]][1]),
+                n = 1001, color = "#1B9E77", size = 1) +
+  stat_function(fun = function(x, shape, scale, lambda) dgamma(x, shape = shape, scale = scale) * lambda,
+                args = list(shape = gmix@Theta[[1]]$theta2.2, 
+                            scale = gmix@Theta[[1]]$theta1.2, 
+                            lambda = gmix@w[[1]][2]),
+                n = 1001, color = "#D95F02", size = 1) +
+  labs(x = "Total normalized error", y = "Density") +
+  theme_light(base_size = 16, base_family = "Raleway")
+```
+
+The 30-second chunks in the resulting cluster with the highest total normalized
+error were considered as inactive and excluded from further classification. The
+chunks in the other cluster were considered as active and subjected to further
+classification to determine their behavioral properties (see below).
+
+```{r message=FALSE}
+cl <- factor(rebmix::RCLRMIX(x = gmix)@Zp)
+mus <- c(gmix@Theta[[1]]$theta1.1 * gmix@Theta[[1]]$theta2.1,
+         gmix@Theta[[1]]$theta1.2 * gmix@Theta[[1]]$theta2.2)
+
+activity_class <- activity_summ %>%
+  filter(., discard == FALSE) %>%
+  mutate(., activity = if_else(cl == which.max(mus) | norm_error > max(mus), 
+                               "inactive", "active")) %>%
+  dplyr::select(., id, group, activity)
+```
+
+## . Movement patterns
+
+Preliminary observations of the recorded tracks suggested that the bots'
+movements could be described as a combination of straight lines and circles (or
+arcs).
+
+We therefore defined the following two indices to capture the most common path
+classes displayed by the bots during each chunk: 
+
+- A "straightness" inde computed as one minus the circular variance of the 
+headings during the chunk. A value of 1 indicates a perfectly straight line. 
+
+- A "gyration" index computed as one minus the circular variance of the angular 
+speeds during the chunk divided by the circular variance of the angular speeds 
+if they were distributed symmetrically around zero. A value of 1 indicates a 
+trajectory following a perfect circle.
+
+```{r message=FALSE}
+library(circular)
+
+behavior_summ <- tracks %>%
+  full_join(., activity_class, by = c("id", "group")) %>%
+  filter(., activity == "active") %>%
+  mutate(., heading = as.circular(heading, type = "angles", units = "radians",
+                                  template = "none", modulo = "asis", 
+                                  rotation = "counter", zero = 0),
+         ang_speed = as.circular(ang_speed, type = "angles", units = "radians",
+                                 template = "none", modulo = "asis", 
+                                 rotation = "counter", zero = 0)) %>%
+  group_by(., id, group) %>%
+  summarize(., straightness = 1 - var.circular(heading, na.rm = TRUE),
+            gyration = 1 - (var.circular(c(ang_speed, ang_speed), na.rm = TRUE) /
+                              var.circular(c(ang_speed, -ang_speed), na.rm = TRUE)),
+            .groups = "drop")
+```
+
+The distributions of the two indices are represented below.
+
+```{r fig.height=6, fig.width=12}
+library(patchwork)
+
+g1 <- ggplot(behavior_summ, aes(x = straightness)) +
+  geom_histogram(aes(y = ..density..), alpha = 0.5, bins = 100) +
+  geom_density() + 
+  labs(x = "Straightness index",
+       y = "Density") +
+  theme_light(base_size = 16, base_family = "Raleway")
+
+g2 <- ggplot(behavior_summ, aes(x = gyration)) +
+  geom_histogram(aes(y = ..density..), alpha = 0.5, bins = 100) +
+  geom_density() + 
+  labs(x = "Gyration index",
+       y = "Density") +
+  theme_light(base_size = 16, base_family = "Raleway")
+
+g3 <- ggplot(behavior_summ, aes(x = straightness, y = gyration)) +
+  geom_vline(xintercept = 0.5, linetype = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0.5, linetype = 2, alpha = 0.5) +
+  geom_point(aes(color = straightness - gyration), alpha = 0.1) +
+  geom_density_2d(alpha = 0.5, color = "black") +
+  labs(x = "Straightness index", 
+       y = "Gyration index") +
+  scale_color_viridis_c(option = "inferno") +
+  theme_light(base_size = 16, base_family = "Raleway") +
+  theme(legend.position = "none")
+
+g <- (g1 / g2) | g3
+g <- g + 
+  plot_annotation(tag_levels = "A", 
+                  theme = theme(plot.tag = element_text(margin = margin(r = 10, b = 10))))
+g
+```
+
+The behavioral space formed by the straightness and gyration indices defines
+two behavioral extremes: 
+
+- Top-left: purely circling trajectories. 
+- Bottom-right: completely straight trajectories. 
+
+The rest of the space represents trajectories that are relative combinations of 
+these two extremes. In order to separate the trajectory chunks into categories of 
+- roughly - similar behavior, we used the cross-entropy clustering algorithm 
+described in @Tabor2014-kd and implemented in the `cec` function of the `CEC` 
+package (version 0.10.2) @cec2018 for R. We seeded the algorithm with 9 initial 
+cluster centers placed at the 4 corners of the behavioral space, at all 
+mid-points between the 4 corners, and at the center of the behavioral space. 
+Resulting clusters with cardinality less than 5% of the available data points 
+were removed. The resulting clusters ordered by average dissimilarity (a measure 
+of the internal consistency of a cluster) are displayed in the figure below. 
+
+```{r fig.height=6, fig.width=12}
+library(CEC)
+library(cluster)
+library(ggforce)
+library(RColorBrewer)
+
+init <- matrix(ncol = 2, byrow = TRUE,
+               c(0, 0,
+                 1, 0,
+                 0, 1,
+                 1, 1,
+                 0.5, 0.5,
+                 0, 0.5,
+                 0.5, 0,
+                 1, 0.5,
+                 0.5, 1))
+
+clusters <- behavior_summ %>%
+  dplyr::select(., straightness, gyration) %>%
+  as.matrix(.) %>%
+  cec(., init, iter.max = 1000)
+
+behavior_class <- behavior_summ %>%
+  dplyr::select(., id, group) %>%
+  mutate(., class = clusters$cluster)
+
+class_stats <- behavior_summ %>%
+  full_join(., behavior_class, by = c("id", "group")) %>%
+  group_by(., class) %>%
+  summarize(., size = n(),
+            av_diss = daisy(cbind(straightness, gyration)) %>%
+              as.matrix(.) %>%
+              apply(., 1, mean) %>%
+              min(.),
+            med_straightness = median(straightness),
+            up_straightness = quantile(straightness, 3/4),
+            lo_straightness = quantile(straightness, 1/4),
+            med_gyration = median(gyration),
+            up_gyration = quantile(gyration, 3/4),
+            lo_gyration = quantile(gyration, 1/4),
+            .groups = "drop") %>%
+  mutate(., behavior = rank(av_diss))
+
+behavior_class <- behavior_class %>%
+  full_join(., class_stats %>% select(., class, behavior), by = "class")
+
+cov2shape <- function(sigma, mu) {
+  eig <- eigen(sigma)
+  eigval <- eig$values
+  eigvec <- eig$vectors
+  eigidx <- order(eigval)
+  
+  if (eigidx[1] == 1) {
+    a <- 2 * sqrt(eigval[2])
+    b <- 2 * sqrt(eigval[1])
+  } else {
+    a <- 2 * sqrt(eigval[1]);
+    b <- 2 * sqrt(eigval[2]);
+  }
+  
+  alpha <- atan(eigvec[2, 1] / eigvec[2, 2])
+  
+  c(x = mu[1], y = mu[2], alpha = alpha, a = a, b = b)
+}
+
+ellipses <- t(mapply(cov2shape, clusters$covariances, asplit(clusters$centers, 1), 
+                     SIMPLIFY = TRUE)) %>%
+  as_tibble(.) %>%
+  mutate(., class = 1:max(behavior_class$class)) %>%
+  full_join(., class_stats %>% select(., class, behavior), by = "class")
+
+g1 <- ggplot(class_stats, aes(y = av_diss, x = factor(behavior), fill = factor(behavior))) +
+  geom_col() +
+  labs(x = "Behavioral cluster",
+       y = "Average dissimilarity") +
+  scale_fill_manual(values = c(brewer.pal(8, "Dark2"), "#333333")) +
+  theme_light(base_size = 16, base_family = "Raleway") +
+  theme(legend.position = "none")
+
+g2 <- ggplot(class_stats, aes(y = 100 * size / sum(size), x = factor(behavior), fill = factor(behavior))) +
+  geom_col() +
+  labs(x = "Behavioral cluster",
+       y = "% of observations") +
+  scale_fill_manual(values = c(brewer.pal(8, "Dark2"), "#333333")) +
+  theme_light(base_size = 16, base_family = "Raleway") +
+  theme(legend.position = "none")
+
+g3 <- ggplot() +
+  geom_vline(xintercept = 0.5, linetype = 2, alpha = 0.5) +
+  geom_hline(yintercept = 0.5, linetype = 2, alpha = 0.5) +
+  geom_point(aes(x = straightness, y = gyration, color = factor(behavior)), 
+             data = behavior_summ %>% full_join(., behavior_class, by = c("id", "group")), 
+             alpha = 0.1) +
+  geom_ellipse(aes(x0 = x, y0 = y, a = a, b = b, angle = alpha, col = factor(behavior)),
+               data = ellipses, size = 1, alpha = 0.5) +
+  # geom_polygon(aes(V1, V2, color = factor(behavior)), data = chull, fill = NA) +
+  geom_errorbar(aes(x = med_straightness, ymin = lo_gyration, ymax = up_gyration),
+                data = class_stats) + 
+  geom_errorbarh(aes(y = med_gyration, xmin = lo_straightness, xmax = up_straightness),
+                 data = class_stats) +
+  geom_label(aes(x = med_straightness, y = med_gyration, label = behavior), 
+             data = class_stats, size = 3) +
+  coord_equal(xlim = c(0, 1), ylim = c(0, 1)) +
+  scale_color_manual(values = c(brewer.pal(8, "Dark2"), "#333333")) +
+  labs(x = "Straightness index",
+       y = "Gyration index") +
+  theme_light(base_size = 16, base_family = "Raleway") +
+  theme(legend.position = "none")
+
+g <- (g1 / g2) | g3
+g <- g + 
+  plot_annotation(tag_levels = "A", 
+                  theme = theme(plot.tag = element_text(margin = margin(r = 10, b = 10))))
+g
+```
+
+The final classification resulted in five categories, three of them (1, 2, 3) 
+with high internal consistency (i.e., low average dissimilarity) and the other 
+two (4 and 5) being more diffuse. Two of the five categories (1 and 4) represent 
+more than 60% of the active chunks, indicating that the bots' most common 
+behavior is to perform circling movements (categories 1 and 4 have the highest 
+gyration indices of the five behavioral categories). 
+
+## . Behavioral statistics by category
+
+Below are behavioral statistics for each behavioral category, including the 
+inactive chunks. 
+
+```{r fig.height=4, fig.width=12}
+final_behavior_summ <- tracks %>%
+  full_join(., activity_class, by = c("id", "group")) %>%
+  full_join(., behavior_class, by = c("id", "group")) %>%
+  filter(., !is.na(activity)) %>%
+  mutate(., behavior = as.character(behavior)) %>%
+  mutate(., behavior = if_else(is.na(behavior), "Inactive", behavior)) %>%
+  mutate(., heading = as.circular(heading, type = "angles", units = "radians",
+                                  template = "none", modulo = "asis", 
+                                  rotation = "counter", zero = 0),
+         ang_speed = as.circular(ang_speed, type = "angles", units = "radians",
+                                 template = "none", modulo = "asis", 
+                                 rotation = "counter", zero = 0)) %>%
+  group_by(., id, group) %>%
+  summarize(., straightness = 1 - var.circular(heading, na.rm = TRUE),
+            gyration = 1 - (var.circular(c(ang_speed, ang_speed), na.rm = TRUE) /
+                              var.circular(c(ang_speed, -ang_speed), na.rm = TRUE)),
+            lin_speed = mean(lin_speed, na.rm = TRUE),
+            behavior = behavior[1],
+            .groups = "drop")
+
+g1 <- ggplot(final_behavior_summ, aes(x = factor(behavior), y = straightness, 
+                                      fill = factor(behavior))) +
+  geom_boxplot() +
+  labs(x = "Behavioral cluster",
+       y = "Straightness index") +
+  scale_fill_manual(values = c(brewer.pal(8, "Dark2"), "#333333")) +
+  theme_light(base_size = 16, base_family = "Raleway") +
+  theme(legend.position = "none")
+
+g2 <- ggplot(final_behavior_summ, aes(x = factor(behavior), y = gyration, 
+                                      fill = factor(behavior))) +
+  geom_boxplot() +
+  labs(x = "Behavioral cluster",
+       y = "Gyration index") +
+  scale_fill_manual(values = c(brewer.pal(8, "Dark2"), "#333333")) +
+  theme_light(base_size = 16, base_family = "Raleway") +
+  theme(legend.position = "none")
+
+g3 <- ggplot(final_behavior_summ, aes(x = factor(behavior), y = lin_speed, 
+                                      fill = factor(behavior))) +
+  geom_boxplot() +
+  labs(x = "Behavioral cluster",
+       y = "Linear speed") +
+  scale_fill_manual(values = c(brewer.pal(8, "Dark2"), "#333333")) +
+  theme_light(base_size = 16, base_family = "Raleway") +
+  theme(legend.position = "none")
+
+g <- g1 | g2 | g3
+g <- g + 
+  plot_annotation(tag_levels = "A", 
+                  theme = theme(plot.tag = element_text(margin = margin(r = 10, b = 10))))
+g
+```
+
+## . Trajectory samples for each category
+
+Below are sample trajectories for each behavioral category, including the 
+inactive chunks. The grid size of each plot is indicative of the relative scale 
+of trajectories. 
+
+```{r fig.height=8, fig.width=12}
+library(tidyr)
+
+tracks_cl <- tracks %>%
+  full_join(., activity_class, by = c("id", "group")) %>%
+  full_join(., behavior_class, by = c("id", "group")) %>%
+  filter(., !is.na(activity)) %>%
+  mutate(., behavior = as.character(behavior)) %>%
+  mutate(., behavior = if_else(is.na(behavior), "Inactive", behavior))
+
+tracks_sample <- tracks_cl %>%
+  group_by(., behavior, id, group, condition) %>%
+  nest(.) %>%
+  group_by(., behavior) %>%
+  do(., sample_n(., 9)) %>%
+  unnest(., data) %>%
+  group_by(., behavior, id, group, condition) %>%
+  mutate(., x = x - mean(x), y = y - mean(y)) %>%
+  ungroup(.)
+
+g <- tracks_sample %>%
+  group_by(., behavior, id, group) %>%
+  do(., g = ggplot(., aes(x, y)) +
+       geom_path() +
+       coord_fixed(xlim = range(c(.$x, .$y)), ylim = range(c(.$x, .$y))) +
+       scale_x_continuous(breaks = seq(-0.3, 0.3, 0.01)) +
+       scale_y_continuous(breaks = seq(-0.3, 0.3, 0.01)) +
+       theme_light(base_size = 16, base_family = "Raleway")  +
+       theme(axis.title = element_blank(),
+             axis.text = element_blank(),
+             axis.ticks = element_blank())) %>%
+  ungroup(.) %>%
+  group_by(., behavior) %>%
+  do(., g = wrap_plots(.$g, nrow = 3) +
+       plot_annotation(title = paste0("Category ", .$behavior[1]),
+                       theme = theme(plot.title = element_text(size = 16, family = "Raleway")))) %>%
+  ungroup(.) 
+
+wrap_elements(g$g[[1]]) + wrap_elements(g$g[[2]]) + wrap_elements(g$g[[3]]) +
+  wrap_elements(g$g[[4]]) + wrap_elements(g$g[[5]]) + wrap_elements(g$g[[6]])
+```
+
+---
+
+# . Behavioral transitions
+
+In order to understand better how the bots' behaviors are distributed relative 
+to each other, we estimated the transition probabilities between each behavioral
+category by calculating the proportion of times a chunk of a given category is 
+followed by a chunk of the same or another category. In order to simplify the 
+interpretation of the resulting behavioral transition network, we: 
+
+- grouped chunks from categories 1 and 4 together under a new category called 
+"Gyrating";
+- grouped chunks from categories 2 and 3 together under a new category called 
+"Non-gyrating";
+- renamed category 5 as "Intermediary".
+
+```{r message=FALSE}
+library(msm)
+library(tidygraph)
+
+sub2ind <- function(row, col, nrow) {
+  (col - 1) * nrow + row
+}
+
+freqTable <- function(state, id, levels) {
+  x <- statetable.msm(state, id)
+  m <- matrix(0, nrow = length(levels), ncol = length(levels))
+  colnames(m) <- levels
+  rownames(m) <- levels
+  idx <- expand.grid(which(levels %in% rownames(x)), which(levels %in% rownames(x)))
+  m[sub2ind(idx[, 1], idx[, 2], nrow = length(levels))] <- x
+  m
+}
+
+graphTable <- function(freq, relative = FALSE) {
+  if (relative == TRUE) {
+    t_tb <- t(apply(freq, 1, function(x) x / sum(x)))
+    t_tb[is.na(t_tb)] <- 0
+  } else {
+    t_tb <- freq
+  }
+  
+  tbl_graph(nodes = data.frame(name = rownames(freq), count = apply(freq, 1, sum)),
+            edges = as.data.frame(cbind(which(t_tb > -1, arr.ind = TRUE), weight = as.vector(t_tb))))
+}
+
+final_behavior_summ <- final_behavior_summ %>%
+  mutate(., behavior_simplified = if_else(behavior == "1" | behavior == "4", "Gyrating",
+                                          if_else(behavior == "2" | behavior == "3", "Non-gyrating",
+                                                  if_else(behavior == "5", "Intermediary", behavior))))
+
+freq_table <- freqTable(final_behavior_summ$behavior_simplified, final_behavior_summ$id,
+                        levels = sort(unique(final_behavior_summ$behavior_simplified)))
+graph_table <- graphTable(freq_table, relative = TRUE)
+```
+
+The estimated transition network is represented below. Note in particular that 
+the bots never transitioned directly from the "Inactive" category to the 
+"Gyrating" one, and vice versa, and always had to go through one of the other 
+two categories first. 
+
+```{r message=FALSE, fig.height=6, fig.width=6}
+library(ggraph)
+library(scales)
+
+graph_table %>% 
+  activate(edges) %>% 
+  filter(weight > 0) %>%
+  ggraph(., layout = "linear", circular = TRUE) + 
+  geom_edge_fan(aes(label = percent(weight, accuracy = 0.01, digits = 0), 
+                    edge_alpha = weight),
+                arrow = arrow(length = unit(3, "mm")),
+                start_cap = circle(15, "mm"),
+                end_cap = circle(15, "mm"),
+                angle_calc = "along",
+                label_dodge = unit(-3, "mm")) + 
+  geom_edge_loop(aes(label = percent(weight, accuracy = 0.01, digits = 0), 
+                     edge_alpha = weight, span = 60, strength = 0.75, 
+                     direction = c(45, 0, 0, -45, 0, 0, 0, 0, -135, 0, 0, 0, 0, 135)),
+                 arrow = arrow(length = unit(3, "mm")),
+                 start_cap = circle(15, "mm"),
+                 end_cap = circle(15, "mm"),
+                 angle_calc = "along",
+                 label_dodge = unit(-3, "mm")) +
+  geom_node_point(size = 35) +
+  geom_node_text(aes(label = paste0(name, "\n", count)), color = "white") +
+  scale_x_continuous(expand = expansion(c(.12, .12))) +
+  scale_y_continuous(expand = expansion(c(.12, .12))) + 
+  theme(legend.position = "none",
+        panel.background = element_rect(fill = "white"))
+
+```
+
+---
+
+# References
+

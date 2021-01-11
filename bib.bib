@@ -1,0 +1,225 @@
+@Manual{trackr2020,
+    title = {trackR: Simple Video Tracking Software},
+    author = {Simon Garnier},
+    year = {2020},
+    url = {https://swarm-lab.github.io/trackR/},
+    note = {https://github.com/swarm-lab/trackR}
+}
+
+@Manual{spectrum2020,
+    title = {Spectrum: Fast Adaptive Spectral Clustering for Single and Multi-View Data},
+    author = {Christopher R John and David Watson},
+    year = {2020},
+    note = {R package version 1.1},
+    url = {https://CRAN.R-project.org/package=Spectrum},
+}
+
+@ARTICLE{John2020-jk,
+  title    = "{Spectrum: fast density-aware spectral clustering for single and
+              multi-omic data}",
+  author   = "John, Christopher R and Watson, David and Barnes, Michael R and
+              Pitzalis, Costantino and Lewis, Myles J",
+  abstract = "MOTIVATION: Clustering patient omic data is integral to
+              developing precision medicine because it allows the
+              identification of disease subtypes. A current major challenge is
+              the integration multi-omic data to identify a shared structure
+              and reduce noise. Cluster analysis is also increasingly applied
+              on single-omic data, for example, in single cell RNA-seq analysis
+              for clustering the transcriptomes of individual cells. This
+              technology has clinical implications. Our motivation was
+              therefore to develop a flexible and effective spectral clustering
+              tool for both single and multi-omic data. RESULTS: We present
+              Spectrum, a new spectral clustering method for complex omic data.
+              Spectrum uses a self-tuning density-aware kernel we developed
+              that enhances the similarity between points that share common
+              nearest neighbours. It uses a tensor product graph data
+              integration and diffusion procedure to reduce noise and reveal
+              underlying structures. Spectrum contains a new method for finding
+              the optimal number of clusters (K) involving eigenvector
+              distribution analysis. Spectrum can automatically find K for both
+              Gaussian and non-Gaussian structures. We demonstrate across 21
+              real expression datasets that Spectrum gives improved runtimes
+              and better clustering results relative to other methods.
+              AVAILABILITY AND IMPLEMENTATION: Spectrum is available as an R
+              software package from CRAN
+              https://cran.r-project.org/web/packages/Spectrum/index.html.
+              SUPPLEMENTARY INFORMATION: Supplementary data are available at
+              Bioinformatics online.",
+  journal  = "Bioinformatics",
+  volume   =  36,
+  number   =  4,
+  pages    = "1159--1166",
+  month    =  feb,
+  year     =  2020,
+  url      = "http://dx.doi.org/10.1093/bioinformatics/btz704",
+  file     = "All Papers/J/John et al. 2020 - Spectrum - fast density-aware spectral clustering for single and multi-omic data.pdf",
+  language = "en",
+  issn     = "1367-4803, 1367-4811",
+  pmid     = "31501851",
+  doi      = "10.1093/bioinformatics/btz704"
+}
+
+
+@INPROCEEDINGS{Yan2009-ok,
+  title     = "{Fast approximate spectral clustering}",
+  booktitle = "{Proceedings of the 15th ACM SIGKDD international conference on
+               Knowledge discovery and data mining}",
+  author    = "Yan, Donghui and Huang, Ling and Jordan, Michael I",
+  abstract  = "Spectral clustering refers to a flexible class of clustering
+               procedures that can produce high-quality clusterings on small
+               data sets but which has limited applicability to large-scale
+               problems due to its computational complexity of O(n3) in
+               general, with n the number of data points. We extend the range
+               of spectral clustering by developing a general framework for
+               fast approximate spectral clustering in which a
+               distortion-minimizing local transformation is first applied to
+               the data. This framework is based on a theoretical analysis that
+               provides a statistical characterization of the effect of local
+               distortion on the mis-clustering rate. We develop two concrete
+               instances of our general framework, one based on local k-means
+               clustering (KASP) and one based on random projection trees
+               (RASP). Extensive experiments show that these algorithms can
+               achieve significant speedups with little degradation in
+               clustering accuracy. Specifically, our algorithms outperform
+               k-means by a large margin in terms of accuracy, and run several
+               times faster than approximate spectral clustering based on the
+               Nystrom method, with comparable accuracy and significantly
+               smaller memory footprint. Remarkably, our algorithms make it
+               possible for a single machine to spectral cluster data sets with
+               a million observations within several minutes.",
+  publisher = "Association for Computing Machinery",
+  pages     = "907--916",
+  series    = "KDD '09",
+  month     =  jun,
+  year      =  2009,
+  url       = "https://doi.org/10.1145/1557019.1557118",
+  file      = "All Papers/Y/Yan et al. 2009 - Fast approximate spectral clustering.pdf",
+  address   = "New York, NY, USA",
+  keywords  = "unsupervised learning, spectral clustering, data quantization",
+  location  = "Paris, France",
+  isbn      = "9781605584959",
+  doi       = "10.1145/1557019.1557118"
+}
+
+
+@ARTICLE{Zelnik-Manor2004-vj,
+  title   = "{Self-tuning spectral clustering}",
+  author  = "Zelnik-Manor, Lihi and Perona, Pietro",
+  journal = "Advances in neural information processing systems",
+  volume  =  17,
+  pages   = "1601--1608",
+  year    =  2004,
+  url     = "https://proceedings.neurips.cc/paper/2004/file/40173ea48d9567f1f393b20c855bb40b-Paper.pdf",
+  file    = "All Papers/Z/Zelnik-Manor and Perona 2004 - Self-tuning spectral clustering.pdf",
+  issn    = "1049-5258"
+}
+
+
+@Article{mixtools2009,
+    title = {{mixtools}: An {R} Package for Analyzing Finite Mixture Models},
+    author = {Tatiana Benaglia and Didier Chauveau and David R. Hunter and Derek Young},
+    journal = {Journal of Statistical Software},
+    year = {2009},
+    volume = {32},
+    number = {6},
+    pages = {1--29},
+    url = {http://www.jstatsoft.org/v32/i06/},
+  }
+
+
+@ARTICLE{rebmix2020,
+  title     = "{Improved Initialization of the EM Algorithm for Mixture Model
+               Parameter Estimation}",
+  author    = "Pani{\'c}, Branislav and Klemenc, Jernej and Nagode, Marko",
+  abstract  = "A commonly used tool for estimating the parameters of a mixture
+               model is the Expectation--Maximization (EM) algorithm, which is
+               an iterative procedure that can serve as a maximum-likelihood
+               estimator. The EM algorithm has well-documented drawbacks, such
+               as the need for good initial values and the possibility of being
+               trapped in local optima. Nevertheless, because of its appealing
+               properties, EM plays an important role in estimating the
+               parameters of mixture models. To overcome these initialization
+               problems with EM, in this paper, we propose the
+               Rough-Enhanced-Bayes mixture estimation (REBMIX) algorithm as a
+               more effective initialization algorithm. Three different
+               strategies are derived for dealing with the unknown number of
+               components in the mixture model. These strategies are thoroughly
+               tested on artificial datasets, density--estimation datasets and
+               image--segmentation problems and compared with state-of-the-art
+               initialization methods for the EM. Our proposal shows promising
+               results in terms of clustering and density-estimation
+               performance as well as in terms of computational efficiency. All
+               the improvements are implemented in the rebmix R package.",
+  journal   = "Science in China, Series A: Mathematics",
+  publisher = "Multidisciplinary Digital Publishing Institute",
+  volume    =  8,
+  number    =  3,
+  pages     = "373",
+  month     =  mar,
+  year      =  2020,
+  url       = "https://www.mdpi.com/2227-7390/8/3/373",
+  file      = "All Papers/P/Panić et al. 2020 - Improved Initialization of the EM Algorithm for Mixture Model Parameter Estimation.pdf",
+  language  = "en",
+  doi       = "10.3390/math8030373"
+}
+
+@Manual{cluster2019,
+    title = {cluster: Cluster Analysis Basics and Extensions},
+    author = {Martin Maechler and Peter Rousseeuw and Anja Struyf and Mia Hubert and Kurt Hornik},
+    year = {2019},
+    note = {R package version 2.1.0 --- For new features, see the 'Changelog' file (in the package source)},
+  }
+
+
+@INPROCEEDINGS{Schubert2019-om,
+  title     = "{Faster k-Medoids Clustering: Improving the PAM, CLARA, and
+               CLARANS Algorithms}",
+  booktitle = "{Similarity Search and Applications}",
+  author    = "Schubert, Erich and Rousseeuw, Peter J",
+  abstract  = "Clustering non-Euclidean data is difficult, and one of the most
+               used algorithms besides hierarchical clustering is the popular
+               algorithm Partitioning Around Medoids (PAM), also simply
+               referred to as k-medoids.",
+  publisher = "Springer International Publishing",
+  pages     = "171--187",
+  year      =  2019,
+  url       = "http://dx.doi.org/10.1007/978-3-030-32047-8_16",
+  file      = "All Papers/S/Schubert and Rousseeuw 2019 - Faster k-Medoids Clustering - Improving the PAM, CLARA, and CLARANS Algorithms.pdf",
+  doi       = "10.1007/978-3-030-32047-8\_16"
+}
+
+
+@ARTICLE{Tabor2014-kd,
+  title    = "{Cross-entropy clustering}",
+  author   = "Tabor, J and Spurek, Przemyslaw",
+  abstract = "We build a general and easily applicable clustering theory, which
+              we call cross-entropy clustering (shortly CEC), which joins the
+              advantages of classical k-means (easy implementation and speed)
+              with those of EM (affine invariance and ability to adapt to
+              clusters of desired shapes). Moreover, contrary to k-means and
+              EM, CEC finds the optimal number of clusters by automatically
+              removing groups which have negative information cost. Although
+              CEC, like EM, can be built on an arbitrary family of densities,
+              in the most important case of Gaussian CEC the division into
+              clusters is affine invariant.",
+  journal  = "Pattern recognition",
+  volume   =  47,
+  number   =  9,
+  pages    = "3046--3059",
+  month    =  sep,
+  year     =  2014,
+  url      = "http://www.sciencedirect.com/science/article/pii/S0031320314000764",
+  file     = "All Papers/T/Tabor and Spurek 2014 - Cross-entropy clustering.pdf",
+  keywords = "Clustering; Cross-entropy; Memory compression",
+  issn     = "0031-3203",
+  doi      = "10.1016/j.patcog.2014.03.006"
+}
+
+
+@Manual{cec2018,
+    title = {CEC: Cross-Entropy Clustering},
+    author = {Konrad Kamieniecki and Przemyslaw Spurek},
+    year = {2018},
+    note = {R package version 0.10.2},
+    url = {https://CRAN.R-project.org/package=CEC},
+  }
