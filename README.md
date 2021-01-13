@@ -1,6 +1,6 @@
 # Support material for "A New Cellular Platform for the Development of Synthetic Living Machines" [![DOI](https://zenodo.org/badge/328650593.svg)](https://zenodo.org/badge/latestdoi/328650593)
 
-*by Douglas Blackiston, Emma Lederer, Sam Kriegman, Simon Garnier, Josh, Bongard, and Michael Levin*
+*by Douglas Blackiston, Emma Lederer, Sam Kriegman, Simon Garnier, Josh Bongard, and Michael Levin*
 
 ---
 
